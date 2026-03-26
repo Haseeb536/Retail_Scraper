@@ -1,6 +1,7 @@
 {
   "name": "retail-scraper-backend",
   "version": "0.1.0",
+  "author": "Muhammad Haseeb Ramzan <https://github.com/Haseeb536>",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",

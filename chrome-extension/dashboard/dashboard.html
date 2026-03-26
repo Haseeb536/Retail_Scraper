@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retail Scraper - Professional Dashboard</title>
+    <link rel="stylesheet" href="dashboard.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Background Decorations -->
+        <div class="bg-blur-1"></div>
+        <div class="bg-blur-2"></div>
+        <div class="bg-grid"></div>
+
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo-container">
+                <div class="logo-orb">
+                    <div class="logo-glow"></div>
+                    <span class="logo-icon">⚡</span>
+                </div>
+                <div class="logo-text">
+                    <h1>RETAIL</h1>
+                    <span>SCRAPER PRO</span>
+                </div>
+            </div>
+
+            <nav class="nav-menu">
+                <a href="#" class="nav-item active" id="nav-dashboard">
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-label">Dashboard</span>
+                </a>
+                <a href="#" class="nav-item" id="nav-history">
+                    <span class="nav-icon">📜</span>
+                    <span class="nav-label">History</span>
+                </a>
+                <a href="#" class="nav-item" id="nav-settings">
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-label">Settings</span>
+                </a>
+            </nav>
+
+            <div class="user-card" id="userCard">
+                <div class="user-avatar" id="userAvatar">U</div>
+                <div class="user-info">
+                    <div class="user-name" id="userName">Loading...</div>
+                    <div class="user-status" id="userStatus">PENDING</div>
+                </div>
+                <button class="logout-btn" id="logoutBtn" title="Logout">⏻</button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="top-bar">
+                <div class="page-title">
+                    <h2>Scraper Terminal</h2>
+                    <p>Enter a Realtor.com URL to begin automated extraction</p>
+                </div>
+                <div class="system-status">
+                    <div class="status-indicator">
+                        <span class="status-dot" id="connectionStatusDot"></span>
+                        <span id="connectionStatusText">Checking Connection...</span>
+                    </div>
+                </div>
+            </header>
+
+            <div class="content-grid">
+                <!-- Input Section -->
+                <section class="card scrape-input-card">
+                    <div class="card-header">
+                        <h3><span class="icon">🔗</span> TARGET URL</h3>
+                    </div>
+                    <div class="input-wrapper">
+                        <input type="text" id="targetUrl" placeholder="https://www.realtor.com/realestateagents/..." spellcheck="false">
+                        <div class="input-background"></div>
+                    </div>
+                    <div class="input-hint">Paste a "Find an Agent" or profile link from Realtor.com</div>
+                    
+                    <div class="action-footer">
+                        <button class="primary-btn" id="startBtn">
+                            <span class="btn-content">
+                                <span class="btn-icon">⚡</span>
+                                <span class="btn-text">INITIATE EXTRACTION</span>
+                            </span>
+                            <div class="btn-shimmer"></div>
+                        </button>
+                    </div>
+                </section>
+
+                <!-- Status & Progress Section -->
+                <section class="card progress-card hidden" id="progressSection">
+                    <div class="card-header">
+                        <h3><span class="icon">🔄</span> EXTRACTION PROGRESS</h3>
+                        <div class="live-badge">LIVE</div>
+                    </div>
+                    
+                    <div class="progress-stats">
+                        <div class="progress-stat">
+                            <span class="stat-label">Processed</span>
+                            <span class="stat-value" id="processedCount">0</span>
+                        </div>
+                        <div class="progress-stat">
+                            <span class="stat-label">Current Page</span>
+                            <span class="stat-value" id="currentPage">1</span>
+                        </div>
+                    </div>
+
+                    <div class="progress-bar-container">
+                        <div class="progress-bar-fill" id="progressBar"></div>
+                    </div>
+
+                    <div class="terminal-container">
+                        <div class="terminal-header">SESSION LOG</div>
+                        <div class="terminal-output" id="terminalOutput">
+                            <div class="log-line system">> System initialized...</div>
+                            <div class="log-line">> Ready for input.</div>
+                        </div>
+                    </div>
+                    
+                    <div class="action-footer">
+                        <button class="secondary-btn" id="stopBtn">
+                            <span class="btn-text">TERMINATE SESSION</span>
+                        </button>
+                    </div>
+                </section>
+
+                <!-- Quick Stats Section -->
+                <section class="card stats-card">
+                    <div class="card-header">
+                        <h3><span class="icon">📈</span> QUICK STATS</h3>
+                    </div>
+                    <div class="stats-items">
+                        <div class="stat-box">
+                            <div class="stat-val" id="totalScrapedStat">0</div>
+                            <div class="stat-name">Total Agents</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-val" id="sessionsStat">0</div>
+                            <div class="stat-name">Sessions</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-val" id="successRateStat">100%</div>
+                            <div class="stat-name">Success Rate</div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Info Card -->
+                <section class="card info-card">
+                    <div class="card-header">
+                        <h3><span class="icon">💡</span> INSTRUCTIONS</h3>
+                    </div>
+                    <ul class="instruction-list">
+                        <li><span>1.</span> Copy a search result URL from Realtor.com</li>
+                        <li><span>2.</span> Paste it into the target field above</li>
+                        <li><span>3.</span> Click Initiate to start the background process</li>
+                        <li><span>4.</span> The scraper will automatically handle pagination</li>
+                        <li><span>5.</span> Your download will start automatically when finished</li>
+                    </ul>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="../config.js"></script>
+    <script src="../lib/local-auth.js"></script>
+    <script src="dashboard.js"></script>
+</body>
+</html>

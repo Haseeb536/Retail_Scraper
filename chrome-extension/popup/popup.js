@@ -24,14 +24,55 @@ document.addEventListener("DOMContentLoaded", () => {
   const userNameDisplay = document.getElementById("userName");
   const userStatusDisplay = document.getElementById("userStatus");
   const logoutButton = document.getElementById("logoutButton");
+  const openDashboardButton = document.getElementById("openDashboardButton");
+  const progressSection = document.getElementById("progressSection");
+  const scraperControls = document.getElementById("scraperControls");
+  const pPage = document.getElementById("p-page");
+  const pValid = document.getElementById("p-valid");
+  const stopButton = document.getElementById("stopButton");
 
   const statusIndicator = document.getElementById("statusIndicator");
   const statusDot = statusIndicator.querySelector(".status-dot");
   const statusText = statusIndicator.querySelector(".status-text");
 
   const toastContainer = document.getElementById("toastContainer");
+  const validRowsDisplay = document.getElementById("validRowsCount");
+  const currentPageDisplay = document.getElementById("currentPageNumber");
 
-  const API_BASE_URL = "https://retail-scraper-backend.onrender.com/api";
+  const offlineTestButton = document.getElementById("offlineTestButton");
+
+  const STORAGE_KEYS = {
+    ACTIVE: "retail_scraper_active",
+    DATA: "retail_scraper_data",
+    PAGE: "retail_scraper_page"
+  };
+
+  const API_BASE_URL = getApiBaseUrl();
+
+  async function completeLocalLogin(email, password) {
+    const result = await localLogin({ email, password });
+    if (!result.ok) {
+      showToast(
+        "Server is down. Register a new account first, or use admin@retailscraper.com / admin123",
+        false
+      );
+      return false;
+    }
+    showDashboard(result.user);
+    setOnlineStatus(true);
+    showToast("Logged in locally (server unavailable).", true);
+    return true;
+  }
+
+  async function tryRemoteLogin(email, password) {
+    const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await response.json().catch(() => ({}));
+    return { response, data };
+  }
   function showToast(message, isSuccess) {
     console.log(`Toast: ${message} (${isSuccess ? 'success' : 'error'})`);
     const toast = document.createElement("div");
@@ -90,8 +131,26 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function checkAuthStatus() {
     try {
-      const result = await chrome.storage.local.get("jwtToken");
-      if (result.jwtToken) {
+      const result = await chrome.storage.local.get(["jwtToken", "offlineTestMode"]);
+
+      if (result.offlineTestMode && result.jwtToken) {
+        showDashboard({
+          firstName: "Offline",
+          lastName: "Test",
+          isApproved: true,
+        });
+        setOnlineStatus(true);
+        return;
+      }
+
+      const localUser = await getLocalSessionUser();
+      if (localUser) {
+        showDashboard(localUser);
+        setOnlineStatus(true);
+        return;
+      }
+
+      if (result.jwtToken && !result.jwtToken.startsWith("local:")) {
         const response = await fetch(`${API_BASE_URL}/auth/verify`, {
           method: "POST",
           headers: {
@@ -113,7 +172,13 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     } catch (error) {
       console.error("Auth check failed:", error);
-      setOnlineStatus(false);
+
+      const localUser = await getLocalSessionUser();
+      if (localUser) {
+        showDashboard(localUser);
+        setOnlineStatus(true);
+        return;
+      }
     }
 
     showLoginForm();
@@ -174,25 +239,30 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await response.json();
+      const { response, data } = await tryRemoteLogin(email, password);
 
       if (response.ok) {
-        await chrome.storage.local.set({ jwtToken: data.token });
+        await chrome.storage.local.set({ jwtToken: data.token, offlineTestMode: false });
+        await chrome.storage.local.remove("localSession");
         showToast("Authentication successful!", true);
         setTimeout(() => checkAuthStatus(), 500);
-      } else {
-        showToast(data.error || data.message || "Authentication failed.", false);
+        return;
       }
+
+      if (EXTENSION_CONFIG.ENABLE_LOCAL_AUTH_FALLBACK && (response.status >= 500 || response.status === 0)) {
+        await completeLocalLogin(email, password);
+        return;
+      }
+
+      showToast(data.error || data.message || "Authentication failed.", false);
     } catch (error) {
       console.error("Login error:", error);
-      showToast("Network error. Server offline.", false);
-      setOnlineStatus(false);
+      if (EXTENSION_CONFIG.ENABLE_LOCAL_AUTH_FALLBACK) {
+        await completeLocalLogin(email, password);
+      } else {
+        showToast("Network error. Server offline.", false);
+        setOnlineStatus(false);
+      }
     }
   });
 
@@ -215,28 +285,67 @@ document.addEventListener("DOMContentLoaded", () => {
         body: JSON.stringify({ firstName, lastName, email, password }),
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
 
       if (response.ok) {
         showToast("Registration successful! Awaiting admin approval.", true);
         registerFormElement.reset();
         setTimeout(() => showLoginForm(), 1000);
-      } else {
-        showToast(data.error || data.message || "Registration failed.", false);
+        return;
       }
+
+      if (EXTENSION_CONFIG.ENABLE_LOCAL_AUTH_FALLBACK && (response.status >= 500 || response.status === 0)) {
+        const localResult = await localRegister({ firstName, lastName, email, password });
+        if (localResult.ok) {
+          showToast("Registered locally (server down). You can log in now.", true);
+          registerFormElement.reset();
+          setTimeout(() => showLoginForm(), 1000);
+          return;
+        }
+        showToast(localResult.error, false);
+        return;
+      }
+
+      showToast(data.error || data.message || "Registration failed.", false);
     } catch (error) {
       console.error("Registration error:", error);
-      showToast("Network error. Server offline.", false);
-      setOnlineStatus(false);
+      if (EXTENSION_CONFIG.ENABLE_LOCAL_AUTH_FALLBACK) {
+        const localResult = await localRegister({ firstName, lastName, email, password });
+        if (localResult.ok) {
+          showToast("Registered locally (server down). You can log in now.", true);
+          registerFormElement.reset();
+          setTimeout(() => showLoginForm(), 1000);
+        } else {
+          showToast(localResult.error, false);
+        }
+      } else {
+        showToast("Network error. Server offline.", false);
+        setOnlineStatus(false);
+      }
     }
   });
 
   logoutButton.addEventListener("click", async (e) => {
     e.preventDefault();
-    await chrome.storage.local.remove("jwtToken");
+    await clearLocalSession();
+    await chrome.storage.local.remove(["jwtToken", "offlineTestMode", "localSession"]);
     showToast("Session terminated.", true);
     showLoginForm();
     setOnlineStatus(false);
+  });
+
+  if (offlineTestButton) {
+    offlineTestButton.addEventListener("click", async (e) => {
+      e.preventDefault();
+      await ensureDefaultLocalAdmin();
+      showToast("Use admin@retailscraper.com / admin123 or register above.", true);
+      loginEmailInput.value = "admin@retailscraper.com";
+      loginPasswordInput.value = "admin123";
+    });
+  }
+
+  openDashboardButton.addEventListener("click", () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL("dashboard/dashboard.html") });
   });
 
   scrapeButton.addEventListener("click", async (e) => {
@@ -261,8 +370,8 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    if (!tab.url.includes("/realestateagents") && !tab.url.includes("/agentprofile")) {
-      showToast("Navigate to 'Find an Agent' page first.", false);
+    if (!tab.url.includes("realtor.com")) {
+      showToast("Navigate to a realtor.com agent search page first.", false);
       return;
     }
 
@@ -271,55 +380,139 @@ document.addEventListener("DOMContentLoaded", () => {
     scraperStatus.className = "scraper-status scraping";
     showToast("Starting scrape...", true);
 
-    console.log("Attempting to send message to content script...");
-
-    try {
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ['content.js']
+    async function sendScrapeMessage() {
+      return new Promise((resolve) => {
+        chrome.tabs.sendMessage(
+          tab.id,
+          { action: "executeScraperInContent", token: jwtToken },
+          (resp) => {
+            if (chrome.runtime.lastError) {
+              resolve({ error: chrome.runtime.lastError.message });
+            } else {
+              resolve(resp || { error: "No response from content script" });
+            }
+          }
+        );
       });
-      console.log("Content script injected");
-    } catch (err) {
-      console.log("Content script injection failed (may already be loaded):", err.message);
     }
 
-    setTimeout(() => {
-      chrome.tabs.sendMessage(
-        tab.id,
-        { action: "executeScraperInContent", token: jwtToken },
-        async (resp) => {
-          console.log("Response from content script:", resp);
+    async function pingContentScript() {
+      return new Promise((resolve) => {
+        chrome.tabs.sendMessage(tab.id, { action: "ping" }, (resp) => {
+          resolve(!chrome.runtime.lastError && resp?.ready);
+        });
+      });
+    }
 
-          scrapeButton.disabled = false;
-          scraperStatus.textContent = "READY";
-          scraperStatus.className = "scraper-status ready";
+    try {
+      let ready = await pingContentScript();
 
-          if (chrome.runtime.lastError) {
-            console.error("Chrome runtime error:", chrome.runtime.lastError);
-            showToast("Communication error. Refresh page and try again.", false);
-          } else if (resp) {
-            // Log to backend if needed
-            if (resp.shouldLog && resp.logData) {
-              await logScrapingSession(
-                resp.logData.dataCount,
-                resp.logData.status,
-                resp.logData.jwt
-              );
-            }
-
-            // Show result to user
-            if (resp.success) {
-              showToast(`Success! Processed ${resp.count} agents!`, true);
-            } else {
-              showToast(`Scrape failed: ${resp.error}`, false);
-            }
-          } else {
-            showToast("Scrape failed: No response from content script", false);
-          }
+      if (!ready) {
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: ["content.js"]
+          });
+          console.log("Content script injected");
+          await new Promise((r) => setTimeout(r, 300));
+          ready = await pingContentScript();
+        } catch (err) {
+          console.log("Content script injection failed:", err.message);
         }
-      );
-    }, 500);
+      }
+
+      if (!ready) {
+        showToast("Communication error. Refresh the realtor.com page and try again.", false);
+        scrapeButton.disabled = false;
+        scraperStatus.textContent = "READY";
+        scraperStatus.className = "scraper-status ready";
+        return;
+      }
+
+      const resp = await sendScrapeMessage();
+      console.log("Response from content script:", resp);
+
+      if (resp.error) {
+        showToast(`Scrape failed: ${resp.error}`, false);
+        scrapeButton.disabled = false;
+        scraperStatus.textContent = "READY";
+        scraperStatus.className = "scraper-status ready";
+        return;
+      }
+
+      if (resp.success) {
+        if (resp.alreadyRunning) {
+          showToast("Scraper is already running.", true);
+        } else {
+          showToast("Scrape started! Check progress below.", true);
+        }
+        if (progressSection) progressSection.classList.remove("hidden");
+        if (scraperControls) scraperControls.classList.add("hidden");
+        updateLiveStats();
+      } else {
+        showToast(`Scrape failed: ${resp.error || "Unknown error"}`, false);
+        scrapeButton.disabled = false;
+        scraperStatus.textContent = "READY";
+        scraperStatus.className = "scraper-status ready";
+      }
+    } catch (err) {
+      console.error("Scrape error:", err);
+      showToast("Scrape failed. Refresh page and try again.", false);
+      scrapeButton.disabled = false;
+      scraperStatus.textContent = "READY";
+      scraperStatus.className = "scraper-status ready";
+    }
   });
 
+  // Live Stats Update
+  async function updateLiveStats() {
+    const data = await chrome.storage.local.get([STORAGE_KEYS.DATA, STORAGE_KEYS.PAGE, STORAGE_KEYS.ACTIVE]);
+    const validCount = (data[STORAGE_KEYS.DATA] || []).length;
+    const pageNum = data[STORAGE_KEYS.PAGE] || 1;
+    const isActive = data[STORAGE_KEYS.ACTIVE];
+
+    if (validRowsDisplay) validRowsDisplay.textContent = validCount;
+    if (currentPageDisplay) currentPageDisplay.textContent = pageNum;
+
+    // Update progress section details
+    if (pValid) pValid.textContent = validCount;
+    if (pPage) pPage.textContent = pageNum;
+
+    if (isActive) {
+      if (progressSection) progressSection.classList.remove("hidden");
+      if (scraperControls) scraperControls.classList.add("hidden");
+      scrapeButton.disabled = true;
+      scraperStatus.textContent = "SCRAPING...";
+      scraperStatus.className = "scraper-status scraping";
+    } else {
+      if (progressSection) progressSection.classList.add("hidden");
+      if (scraperControls) scraperControls.classList.remove("hidden");
+      scrapeButton.disabled = false;
+      scraperStatus.textContent = "READY";
+      scraperStatus.className = "scraper-status ready";
+    }
+  }
+
+  // Handle Stop Button
+  if (stopButton) {
+    stopButton.addEventListener("click", async () => {
+      stopButton.disabled = true;
+      stopButton.querySelector(".button-text").textContent = "STOPPING...";
+      await chrome.storage.local.set({ "retail_scraper_stop_requested": true });
+      showToast("Termination requested...", true);
+    });
+  }
+
+  // Listen for storage changes to update stats in real-time
+  chrome.storage.onChanged.addListener((changes) => {
+    if (changes[STORAGE_KEYS.DATA] || changes[STORAGE_KEYS.PAGE] || changes[STORAGE_KEYS.ACTIVE]) {
+      updateLiveStats();
+    }
+  });
+
+  // Initial stats load
+  updateLiveStats();
+
+  ensureDefaultLocalAdmin();
   checkAuthStatus();
 });

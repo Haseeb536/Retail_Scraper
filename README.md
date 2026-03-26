@@ -1,61 +1,82 @@
 # Retail Scraper (Realtor.com)
 
-A premium, cyberpunk-styled Chrome extension for data scraping from Realtor.com. This project features a robust Next.js backend, centralized user management, secure authentication, and a high-performance scraping engine.
+A cyberpunk-styled Chrome extension for automated Realtor.com agent data extraction — built with Manifest V3, a Next.js backend, and local auth fallback for offline use.
 
-## 🚀 Features
+**Author:** [Muhammad Haseeb Ramzan (Haseeb536)](https://github.com/Haseeb536)
 
-### 🛠️ Chrome Extension
-- **Cyberpunk UI**: A futuristic, animated interface with a high-tech aesthetic.
-- **Secure Authentication**: JWT-based login system integrated with the backend API.
-- **High-Performance Scraper**: Automatically collects Agent Name, Phone, Address, and Profile URL from Realtor.com search results.
-- **Smart Pagination**: Automatically navigates through up to 50 pages of results (hardcoded safety limit).
-- **In-Page Overlay**: Real-time progress monitoring through a custom cyberpunk-themed dashboard.
-- **CSV Export**: Instant download of collected data once the scraping process completes.
+## Features
 
-### 🖥️ Backend System (Next.js 15)
-- **Admin Dashboard**: Comprehensive panel to monitor system stats and manage users.
-- **User Approval Workflow**: New registrations require admin approval before they can access the scraper.
-- **Secure API**: Protected routes for scraping logs and user authentication.
-- **Database (Prisma + PostgreSQL)**: Efficient storage for user profiles and scraping activity.
+### Chrome Extension
+- **Cyberpunk UI** — animated popup and professional dashboard
+- **Smart scraper** — collects agent name, phone, address, and profile URL
+- **URL-based pagination** — reliable first-page reset and `/pg-N` navigation
+- **Local auth fallback** — works when the remote backend is unavailable
+- **CSV export** — automatic download when scraping completes
+- **Live progress** — page count and valid rows in the popup
 
-## 🏗️ Technology Stack
+### Backend (Next.js 15)
+- Admin dashboard and user approval workflow
+- JWT authentication with Prisma + PostgreSQL
+- Scraping session logging API
 
-- **Frontend**: Next.js 15 (App Router), React 19, Tailwind CSS 4
-- **Database**: PostgreSQL with Prisma ORM
-- **Extension**: Manifest V3, Vanilla JavaScript
-- **Styling**: Cyberpunk-inspired custom CSS with glassmorphism effects
+## Tech Stack
 
-## ⚙️ Setup Instructions
+| Layer | Technologies |
+|-------|-------------|
+| Extension | Manifest V3, Vanilla JavaScript |
+| Backend | Next.js 15, React 19, Prisma |
+| Database | PostgreSQL |
+| Styling | Custom cyberpunk CSS |
 
-### 1. Database Setup
-1.  Ensure **PostgreSQL** is installed and running.
-2.  Create a database named `retail_scraper`.
-3.  Configure your environment variables in `backend/.env`.
+## Quick Start — Extension Only
 
-### 2. Backend Setup
+1. Open `chrome://extensions/` → enable **Developer mode**
+2. Click **Load unpacked** → select the `chrome-extension` folder
+3. Open a Realtor.com agent page, e.g. `https://www.realtor.com/realestateagents/new-york_ny`
+4. **Refresh the tab**, then open the extension popup
+5. Log in with `admin@retailscraper.com` / `admin123` (local mode when server is down)
+6. Click **Quick Scrape Current**
+
+## Full Stack Setup
+
+### Backend
+
 ```bash
 cd backend
+cp .env.example .env   # set DATABASE_URL and JWT_SECRET
 npm install
 npx prisma generate
 npx prisma migrate dev --name init
-npm run prisma:seed  # Creates default admin: admin@retailscraper.com / admin123
+npm run prisma:seed
 npm run dev
 ```
-The Admin Panel will be available at: `http://localhost:3000/admin/login`
 
-### 3. Chrome Extension Setup
-1.  Open Chrome and navigate to `chrome://extensions/`.
-2.  Enable **"Developer mode"** in the top right corner.
-3.  Click **"Load unpacked"**.
-4.  Select the `chrome-extension` folder from this repository.
+Admin panel: `http://localhost:3000/admin/login`
 
-## 📖 How to Use
+To use your local backend, set in `chrome-extension/config.js`:
 
-1.  **Authentication**: Open the extension popup and log in. If you don't have an account, register and wait for admin approval.
-2.  **Navigate**: Go to a Realtor.com agent listing page (e.g., `https://www.realtor.com/realestateagents/...`).
-3.  **Initiate Scrape**: Click the "INITIATE SCRAPE" button.
-4.  **Monitor**: A cyberpunk overlay will appear on the page, showing the current progress and count.
-5.  **Export**: Once finished (or the 50-page limit is reached), a CSV file will be downloaded automatically.
+```javascript
+USE_LOCAL_BACKEND: true,
+```
 
----
-*Developed for efficient and secure data extraction.*
+### Run tests
+
+```bash
+node test-scraper.mjs
+```
+
+## Project Structure
+
+```
+├── chrome-extension/   # Chrome extension (load this in Chrome)
+│   ├── content.js      # Scraper engine
+│   ├── popup/          # Login & controls
+│   ├── dashboard/      # Full dashboard UI
+│   └── lib/            # Local auth fallback
+├── backend/            # Next.js API + admin panel
+└── test-scraper.mjs    # Node test harness
+```
+
+## License
+
+Open source — maintained by [Haseeb536](https://github.com/Haseeb536).

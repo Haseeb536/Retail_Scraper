@@ -1,13 +1,12 @@
 // content.js
 console.log("Retail Scraper Content Script Loaded.");
 
-(async () => {
-  // Prevent multiple instances in the same context
-  if (window.RETAIL_SCRAPER_EXECUTING) {
-    console.log("Retail Scraper is already executing in this context.");
+(function initRetailScraper() {
+  if (window.__RETAIL_SCRAPER_INIT__) {
+    console.log("Retail Scraper already initialized.");
     return;
   }
-  window.RETAIL_SCRAPER_EXECUTING = true;
+  window.__RETAIL_SCRAPER_INIT__ = true;
 
   const STORAGE_KEYS = {
     ACTIVE: "retail_scraper_active",
@@ -18,38 +17,53 @@ console.log("Retail Scraper Content Script Loaded.");
 
   const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  // Helper functions for storage
   const getStorage = (keys) => new Promise(r => chrome.storage.local.get(keys, r));
   const setStorage = (obj) => new Promise(r => chrome.storage.local.set(obj, r));
 
-  // UI Overlay for progress
-  function createOverlay() {
-    let overlay = document.getElementById("scraper-overlay");
-    if (!overlay) {
-      overlay = document.createElement("div");
-      overlay.id = "scraper-overlay";
-      overlay.style.position = "fixed";
-      overlay.style.top = "20px";
-      overlay.style.right = "20px";
-      overlay.style.backgroundColor = "rgba(0, 0, 0, 0.9)";
-      overlay.style.color = "#00ff9d";
-      overlay.style.padding = "15px";
-      overlay.style.borderRadius = "8px";
-      overlay.style.zIndex = "9999999";
-      overlay.style.fontFamily = "monospace";
-      overlay.style.border = "1px solid #00ff9d";
-      overlay.style.boxShadow = "0 0 10px #00ff9d";
-      document.body.appendChild(overlay);
+  function updateOverlay(text, count = 0, page = 1) {
+    console.log(`[Progress] Status: ${text}, Page: ${page}, Valid Rows: ${count}`);
+  }
+
+  function getPageFromUrl(url = window.location.href) {
+    try {
+      const match = new URL(url).pathname.match(/\/pg-(\d+)\/?$/i);
+      return match ? parseInt(match[1], 10) : 1;
+    } catch {
+      return 1;
     }
-    return overlay;
   }
 
-  function updateOverlay(text) {
-    const el = document.getElementById("scraper-overlay");
-    if (el) el.innerHTML = `<div>${text}</div>`;
+  function buildPageUrl(pageNum, baseUrl = window.location.href) {
+    const url = new URL(baseUrl);
+    let path = url.pathname.replace(/\/pg-\d+\/?$/i, "");
+    if (pageNum > 1) {
+      path = `${path.replace(/\/$/, "")}/pg-${pageNum}`;
+    }
+    url.pathname = path;
+    return url.href;
   }
 
-  // GraphQL Query
+  function extractAgentId(href) {
+    try {
+      const url = new URL(href);
+      const match = url.pathname.match(/\/(?:realestateagents|agentprofile)\/([^/?#]+)/i);
+      if (!match) return null;
+
+      const id = match[1].split("?")[0];
+      if (!id || id.includes("pg-")) return null;
+
+      // 24-char hex profile ID (current Realtor.com format)
+      if (/^[a-f0-9]{24}$/i.test(id)) return id;
+
+      // Legacy slug: Name_City_ST_fulfillmentId (must contain underscore beyond city_state)
+      if (id.includes("_") && !/^[a-z0-9-]+_[a-z]{2}$/i.test(id)) return id;
+
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
   const QUERY = `
     query AgentBrandingProfile($agentBrandingInput: AgentBrandingInput) {
       agent_branding(agent_branding_input: $agentBrandingInput) {
@@ -77,7 +91,7 @@ console.log("Retail Scraper Content Script Loaded.");
         headers: {
           "content-type": "application/json",
           "rdc-client-name": "agent-branding-profile",
-          "rdc-client-version": "0.0.670"
+          "rdc-client-version": "3.0.0"
         },
         body: JSON.stringify({
           operationName: "AgentBrandingProfile",
@@ -91,7 +105,18 @@ console.log("Retail Scraper Content Script Loaded.");
           }
         })
       });
+
+      if (!res.ok) {
+        console.warn(`GraphQL HTTP ${res.status} for agent ${agentId}`);
+        return null;
+      }
+
       const data = await res.json();
+      if (data.errors?.length) {
+        console.warn(`GraphQL errors for ${agentId}:`, data.errors[0]?.message);
+        return null;
+      }
+
       const branding = data.data?.agent_branding?.branding;
       if (!branding) return null;
 
@@ -118,142 +143,237 @@ console.log("Retail Scraper Content Script Loaded.");
   }
 
   async function scrapeCurrentPage() {
-    const links = Array.from(document.querySelectorAll('a[href*="/realestateagents/"], a[href*="/agentprofile/"]'));
     const uniqueAgents = new Map();
 
-    links.forEach(link => {
-      const href = link.href;
-      try {
-        const parts = href.split("/");
-        const lastPart = parts[parts.length - 1].split("?")[0];
-        if (lastPart && (href.includes("/agentprofile/") || href.includes("/realestateagents/"))) {
-          const name = link.innerText.trim();
-          if (!uniqueAgents.has(lastPart) || (name && !uniqueAgents.get(lastPart).name)) {
-            uniqueAgents.set(lastPart, { url: href, name: name });
-          }
-        }
-      } catch (e) { }
+    function addAgent(href, name) {
+      const agentId = extractAgentId(href);
+      if (!agentId) return;
+      if (!uniqueAgents.has(agentId) || (name && !uniqueAgents.get(agentId).name)) {
+        uniqueAgents.set(agentId, { url: href, name: name || "" });
+      }
+    }
+
+    // Prefer agent cards (Realtor.com standard layout)
+    const cards = document.querySelectorAll(
+      '[data-testid="component-agentCard"], [data-testid*="agentCard"], [data-testid*="AgentCard"]'
+    );
+    cards.forEach((card) => {
+      const link = card.querySelector('a[href*="/realestateagents/"], a[href*="/agentprofile/"]');
+      if (link) {
+        addAgent(link.href, (link.innerText || link.textContent || "").trim());
+      }
     });
+
+    if (uniqueAgents.size === 0) {
+      const selectors = [
+        'a[href*="/realestateagents/"]',
+        'a[href*="/agentprofile/"]',
+        '[data-testid*="agent"] a[href*="realestateagents"]'
+      ];
+      Array.from(document.querySelectorAll(selectors.join(", "))).forEach((link) => {
+        addAgent(link.href, (link.innerText || link.textContent || "").trim());
+      });
+    }
 
     return Array.from(uniqueAgents.entries());
   }
 
-  async function goToNextPage() {
-    window.scrollTo(0, document.body.scrollHeight);
-    await delay(1000);
+  async function waitForAgents(maxAttempts = 8) {
+    for (let i = 0; i < maxAttempts; i++) {
+      const agents = await scrapeCurrentPage();
+      if (agents.length > 0) return agents;
+
+      const scrollTarget = (i % 2 === 0) ? document.body.scrollHeight : 0;
+      window.scrollTo({ top: scrollTarget, behavior: "smooth" });
+      await delay(i === 0 ? 2000 : 1500);
+    }
+    return [];
+  }
+
+  async function ensureOnPage(targetPage) {
+    const urlPage = getPageFromUrl();
+    if (urlPage === targetPage) return true;
+
+    const targetUrl = buildPageUrl(targetPage);
+    console.log(`Navigating from URL page ${urlPage} to page ${targetPage}: ${targetUrl}`);
+    await setStorage({ [STORAGE_KEYS.PAGE]: targetPage });
+    window.location.href = targetUrl;
+    return false;
+  }
+
+  async function tryClickNextPage() {
+    window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+    await delay(1500);
+
+    const paginationRoot = document.querySelector(
+      "[data-testid*='pagination'], nav[aria-label*='Pagination'], nav[aria-label*='pagination'], [class*='Pagination']"
+    );
+    const searchRoot = paginationRoot || document;
 
     const nextSelectors = [
-      "a[href*='pg-'][class*='next']",
-      "a[class*='next'] button",
-      "a[aria-label='Next']",
-      "a[aria-label='Goto next page']",
-      "li.pagination__next a",
-      "a.pagination-next"
+      "a[data-testid='pagination-next']",
+      "button[data-testid='pagination-next']",
+      "a[data-testid*='pagination-next']",
+      "button[data-testid*='pagination-next']",
+      "a[aria-label='Go to next page']",
+      "a[aria-label='Next page']",
+      "button[aria-label='Go to next page']",
+      "button[aria-label='Next page']"
     ];
 
     for (const sel of nextSelectors) {
-      const btn = document.querySelector(sel);
-      if (btn && !btn.hasAttribute('disabled') && btn.getAttribute('aria-disabled') !== 'true') {
+      const btn = searchRoot.querySelector(sel);
+      if (btn && !btn.hasAttribute("disabled") && btn.getAttribute("aria-disabled") !== "true") {
+        console.log("Found next button by selector:", sel);
         btn.click();
         return true;
       }
     }
 
-    const allLinks = Array.from(document.querySelectorAll("a, button"));
-    const nextLink = allLinks.find(a => {
-      const text = (a.innerText || a.textContent || "").trim().toLowerCase();
-      return text === "next" || text === "next page" || text.includes("next ›");
-    });
-
-    if (nextLink) {
-      nextLink.click();
-      return true;
+    if (paginationRoot) {
+      const currentPage = getPageFromUrl();
+      const pageLinks = Array.from(paginationRoot.querySelectorAll("a, button"));
+      const nextNumLink = pageLinks.find((el) => {
+        const text = (el.textContent || "").trim();
+        return text === String(currentPage + 1);
+      });
+      if (nextNumLink) {
+        console.log("Found next page number link:", currentPage + 1);
+        nextNumLink.click();
+        return true;
+      }
     }
 
     return false;
   }
 
+  async function goToNextPage() {
+    const urlPage = getPageFromUrl();
+    const nextPage = urlPage + 1;
+
+    const disabledNext = document.querySelector(
+      "button[data-testid='pagination-next'][disabled], a[data-testid='pagination-next'][aria-disabled='true']"
+    );
+    if (disabledNext) {
+      console.log("Next button disabled — last page reached.");
+      return "done";
+    }
+
+    if (await tryClickNextPage()) {
+      await delay(3500);
+      if (getPageFromUrl() > urlPage) {
+        console.log(`Clicked through to page ${getPageFromUrl()}`);
+        return "continued";
+      }
+    }
+
+    const nextUrl = buildPageUrl(nextPage);
+    if (nextUrl === window.location.href) {
+      return "done";
+    }
+
+    console.log(`Navigating to page ${nextPage} via URL: ${nextUrl}`);
+    await setStorage({ [STORAGE_KEYS.PAGE]: nextPage });
+    window.location.href = nextUrl;
+    return "navigating";
+  }
+
   async function runScraperLogic() {
     try {
-      createOverlay();
-      const storage = await getStorage([STORAGE_KEYS.DATA, STORAGE_KEYS.PAGE, STORAGE_KEYS.TOKEN]);
+      const storage = await getStorage([STORAGE_KEYS.DATA, STORAGE_KEYS.PAGE, STORAGE_KEYS.TOKEN, "retail_scraper_stop_requested"]);
       let currentData = storage[STORAGE_KEYS.DATA] || [];
       let page = storage[STORAGE_KEYS.PAGE] || 1;
       const jwt = storage[STORAGE_KEYS.TOKEN];
 
       if (!jwt) {
-        updateOverlay("Error: Missing JWT token.");
         await setStorage({ [STORAGE_KEYS.ACTIVE]: false });
         return;
       }
 
+      if (storage.retail_scraper_stop_requested) {
+        console.log("Stop requested at start of loop.");
+        await finalizeScrape(currentData);
+        return;
+      }
       const seenIds = new Set(currentData.map(row => row[0]));
+      const urlPage = getPageFromUrl();
 
-      updateOverlay(`Scraping Page ${page}...`);
-      window.scrollTo(0, document.body.scrollHeight);
-      await delay(2500); // Allow time for dynamic content
+      // Always start from page 1 on a fresh session
+      if (page === 1 && urlPage !== 1) {
+        console.log(`Session starts on page 1 but browser is on page ${urlPage}. Redirecting...`);
+        const onFirst = await ensureOnPage(1);
+        if (!onFirst) return;
+      }
 
-      const agents = await scrapeCurrentPage();
-      console.log(`Found ${agents.length} agents on page ${page}`);
+      // Keep storage page in sync with the URL after navigation/resume
+      if (page !== urlPage) {
+        console.log(`Syncing to page ${page} (URL shows page ${urlPage})...`);
+        const synced = await ensureOnPage(page);
+        if (!synced) return;
+      }
+
+      updateOverlay("SCANNING...", currentData.length, page);
+      let agents = await waitForAgents();
+      console.log(`Found ${agents.length} potential agents on page ${page} (URL page ${getPageFromUrl()})`);
 
       if (agents.length === 0) {
-        console.log("No agents found on this page. Waiting for retry...");
-        await delay(3000);
-        const retryAgents = await scrapeCurrentPage();
-        if (retryAgents.length === 0) {
-          console.log("Still no agents. Assuming end of list.");
-          await finalizeScrape(currentData);
-          return;
-        }
-        agents.push(...retryAgents);
+        await finalizeScrape(currentData);
+        return;
       }
 
-      let newOnThisPage = 0;
-      for (const [id, info] of agents) {
-        if (seenIds.has(id)) continue;
-        seenIds.add(id);
+      const BATCH_SIZE = 5;
+      const toProcess = agents.filter(([id]) => !seenIds.has(id));
 
-        updateOverlay(`Fetching details for ${id}...`);
-        const details = await fetchAgentDetails(id);
+      for (let i = 0; i < toProcess.length; i += BATCH_SIZE) {
+        const status = await getStorage(["retail_scraper_stop_requested"]);
+        if (status.retail_scraper_stop_requested) break;
 
-        const phone = details?.phone || "";
-        if (!phone) {
-          console.log(`Skipping agent ${id} - No phone number found.`);
-          continue;
-        }
+        const batch = toProcess.slice(i, i + BATCH_SIZE);
+        updateOverlay(`EXTRACTING ${i + 1}-${Math.min(i + BATCH_SIZE, toProcess.length)} of ${toProcess.length}...`, currentData.length, page);
 
-        const name = details?.name || info.name || id.split('_')[0].replace(/-/g, ' ');
-        const address = details?.address || "";
+        const results = await Promise.all(batch.map(async ([id, info]) => {
+          const details = await fetchAgentDetails(id);
+          if (details?.phone) {
+            const name = details.name || info.name || id.split("_")[0].replace(/-/g, " ");
+            return [id, name, details.phone, details.address || "", info.url];
+          }
+          return null;
+        }));
 
-        currentData.push([id, name, phone, address, info.url]);
-        newOnThisPage++;
+        results.filter(Boolean).forEach(row => {
+          if (!seenIds.has(row[0])) {
+            currentData.push(row);
+            seenIds.add(row[0]);
+          }
+        });
 
-        await delay(300); // Rate limit
-        updateOverlay(`Collected: ${currentData.length} agents (Page ${page})`);
+        await setStorage({ [STORAGE_KEYS.DATA]: currentData });
+        updateOverlay("COLLECTED", currentData.length, page);
+        await delay(200);
       }
 
-      // Save progress to storage
-      await setStorage({ [STORAGE_KEYS.DATA]: currentData, [STORAGE_KEYS.PAGE]: page });
+      const finalStatus = await getStorage(["retail_scraper_stop_requested"]);
+      if (finalStatus.retail_scraper_stop_requested) {
+        console.log("Stop requested by user.");
+        await finalizeScrape(currentData);
+        return;
+      }
 
-      updateOverlay(`Navigating to next page...`);
-      const hasNext = await goToNextPage();
+      updateOverlay("NAVIGATING...", currentData.length, page);
+      const navResult = await goToNextPage();
 
-      if (hasNext) {
-        // We expect a page reload. On reload, the script starts again and resumes.
-        await setStorage({ [STORAGE_KEYS.PAGE]: page + 1 });
-        // If it's an AJAX navigation, we need to wait and loop
-        await delay(8000);
-        // If we are still in this execution context, try the next loop
+      if (navResult === "continued") {
+        await setStorage({ [STORAGE_KEYS.PAGE]: getPageFromUrl() });
         runScraperLogic();
+      } else if (navResult === "navigating") {
+        return;
       } else {
-        console.log("No next page found. Finalizing...");
         await finalizeScrape(currentData);
       }
-
     } catch (err) {
       console.error("Scraper Error:", err);
-      updateOverlay(`Error: ${err.message}`);
-      // Don't stop entirely, maybe it's just a transient error
+      updateOverlay(`ERROR: ${err.message}`);
+      await setStorage({ [STORAGE_KEYS.ACTIVE]: false });
     }
   }
 
@@ -268,60 +388,67 @@ console.log("Retail Scraper Content Script Loaded.");
 
     const header = [["Profile ID", "Name", "Phone", "Address", "URL"]];
     const allRows = header.concat(data);
-    const csvContent = allRows.map(e => e.map(i => `"${String(i || '').replace(/"/g, '""')}"`).join(",")).join("\n");
+    const csvContent = allRows.map(e => e.map(i => `"${String(i || "").replace(/"/g, '""')}"`).join(",")).join("\n");
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
     link.setAttribute("download", `retail_scraper_complete_${data.length}.csv`);
     document.body.appendChild(link);
     link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
 
     updateOverlay(`Completed! Exported ${data.length} agents.`);
 
-    // Clean up
     await setStorage({
       [STORAGE_KEYS.ACTIVE]: false,
       [STORAGE_KEYS.DATA]: [],
       [STORAGE_KEYS.PAGE]: 1
     });
-
-    setTimeout(() => {
-      const el = document.getElementById("scraper-overlay");
-      if (el) el.remove();
-    }, 5000);
   }
 
-  // Main Listeners
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "executeScraperInContent") {
       (async () => {
-        const storage = await getStorage([STORAGE_KEYS.ACTIVE]);
-        if (storage[STORAGE_KEYS.ACTIVE]) {
-          console.log("Scraper already active. Ignoring start command.");
-          sendResponse({ success: true, alreadyRunning: true });
-          return;
-        }
+        try {
+          const storage = await getStorage([STORAGE_KEYS.ACTIVE]);
+          if (storage[STORAGE_KEYS.ACTIVE]) {
+            console.log("Scraper already active. Ignoring start command.");
+            sendResponse({ success: true, alreadyRunning: true });
+            return;
+          }
 
-        console.log("🚀 Starting new scraper session...");
-        await setStorage({
-          [STORAGE_KEYS.ACTIVE]: true,
-          [STORAGE_KEYS.DATA]: [],
-          [STORAGE_KEYS.PAGE]: 1,
-          [STORAGE_KEYS.TOKEN]: request.token
-        });
-        runScraperLogic();
-        sendResponse({ success: true });
+          console.log("Starting new scraper session...");
+          await setStorage({
+            [STORAGE_KEYS.ACTIVE]: true,
+            [STORAGE_KEYS.DATA]: [],
+            [STORAGE_KEYS.PAGE]: 1,
+            retail_scraper_stop_requested: false,
+            [STORAGE_KEYS.TOKEN]: request.token
+          });
+          runScraperLogic();
+          sendResponse({ success: true });
+        } catch (err) {
+          console.error("Failed to start scraper:", err);
+          sendResponse({ success: false, error: err.message });
+        }
       })();
+      return true;
+    }
+
+    if (request.action === "ping") {
+      sendResponse({ success: true, ready: true });
       return true;
     }
   });
 
   // Auto-resume check on load
-  const state = await getStorage([STORAGE_KEYS.ACTIVE, STORAGE_KEYS.PAGE]);
-  if (state[STORAGE_KEYS.ACTIVE]) {
-    console.log("🚀 Resuming active scraper session on Page " + (state[STORAGE_KEYS.PAGE] || 1));
-    runScraperLogic();
-  }
+  getStorage([STORAGE_KEYS.ACTIVE, STORAGE_KEYS.PAGE]).then((state) => {
+    if (state[STORAGE_KEYS.ACTIVE]) {
+      console.log("Resuming active scraper session on Page " + (state[STORAGE_KEYS.PAGE] || 1));
+      runScraperLogic();
+    }
+  });
 })();

@@ -478,6 +478,42 @@ body {
     color: var(--text-muted);
 }
 
+/* Progress Section Styles */
+.progress-card {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--primary-magenta);
+    border-radius: 4px;
+    padding: 16px;
+    margin-bottom: 20px;
+    box-shadow: 0 0 15px rgba(255, 0, 255, 0.2);
+    text-align: center;
+}
+
+.progress-header {
+    font-size: 11px;
+    font-weight: bold;
+    color: var(--primary-magenta);
+    letter-spacing: 2px;
+    margin-bottom: 12px;
+}
+
+.progress-stats {
+    display: flex;
+    justify-content: space-around;
+    margin-bottom: 10px;
+}
+
+.p-stat {
+    font-size: 12px;
+    font-weight: bold;
+    color: var(--text-primary);
+}
+
+.p-stat span {
+    color: var(--primary-cyan);
+    font-size: 16px;
+}
+
 /* Toast Notifications */
 .toast-container {
     position: fixed;

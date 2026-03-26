@@ -56,6 +56,9 @@
 
                 <div class="form-footer">
                     <button class="link-button" id="showRegister">New User? Register Here</button>
+                    <button type="button" class="link-button" id="offlineTestButton" style="margin-top: 8px; display: block; width: 100%;">
+                        Server down? Login locally instead
+                    </button>
                 </div>
             </div>
 
@@ -121,13 +124,44 @@
                         <div class="scraper-status" id="scraperStatus">READY</div>
                     </div>
 
-                    <button class="cyber-button scrape-button" id="scrapeButton">
-                        <span class="button-text">INITIATE SCRAPE</span>
+                    <div class="scraper-controls" id="scraperControls">
+                        <button class="cyber-button scrape-button" id="scrapeButton">
+                            <span class="button-text">QUICK SCRAPE CURRENT</span>
+                            <div class="button-glow"></div>
+                            <div class="loading-spinner hidden"></div>
+                        </button>
+                    </div>
+
+                    <div class="progress-section hidden" id="progressSection">
+                        <div class="progress-card">
+                            <div class="progress-header">SCRAPING IN PROGRESS</div>
+                            <div class="progress-stats">
+                                <div class="p-stat">PAGE: <span id="p-page">1</span></div>
+                                <div class="p-stat">VALID: <span id="p-valid">0</span></div>
+                            </div>
+                            <button class="cyber-button stop-button" id="stopButton"
+                                style="border-color: var(--error); color: var(--error); margin-top: 10px;">
+                                <span class="button-text">STOP & DOWNLOAD</span>
+                                <div class="button-glow"></div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <button class="cyber-button primary" id="openDashboardButton"
+                        style="margin-bottom: 20px; margin-top: 10px;">
+                        <span class="button-text">🚀 LAUNCH DASHBOARD</span>
                         <div class="button-glow"></div>
-                        <div class="loading-spinner hidden"></div>
                     </button>
 
                     <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="stat-value" id="validRowsCount">0</div>
+                            <div class="stat-label">VALID ROWS</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="currentPageNumber">1</div>
+                            <div class="stat-label">PAGE</div>
+                        </div>
                         <div class="stat-item">
                             <div class="stat-value" id="lastScrapeCount">0</div>
                             <div class="stat-label">LAST SCRAPE</div>
@@ -145,6 +179,8 @@
         <div class="toast-container" id="toastContainer"></div>
     </div>
 
+    <script src="../config.js"></script>
+    <script src="../lib/local-auth.js"></script>
     <script src="popup.js"></script>
 </body>
 
