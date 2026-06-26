@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "next lint",
     "prisma:seed": "node prisma/seed.js",
+    "render-build": "npx prisma generate && npx prisma migrate deploy && npm run prisma:seed && npm run build",
     "postinstall": "prisma generate"
   },
   "dependencies": {

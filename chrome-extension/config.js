@@ -3,8 +3,8 @@
 const EXTENSION_CONFIG = {
   REMOTE_API_URL: "https://retail-scraper-backend.onrender.com/api",
   LOCAL_API_URL: "http://localhost:3001/api",
-  USE_LOCAL_BACKEND: true,
-  ENABLE_LOCAL_AUTH_FALLBACK: true,
+  USE_LOCAL_BACKEND: false,
+  ENABLE_LOCAL_AUTH_FALLBACK: false,
 };
 
 function getApiBaseUrl() {
