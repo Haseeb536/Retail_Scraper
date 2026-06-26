@@ -12,7 +12,7 @@
   ],
   "host_permissions": [
     "https://www.realtor.com/*",
-    "https://retail-scraper-backend.onrender.com/*",
+    "https://retail-scraper-backend-ecxl.onrender.com/*",
     "http://localhost:3001/*"
   ],
   "background": {

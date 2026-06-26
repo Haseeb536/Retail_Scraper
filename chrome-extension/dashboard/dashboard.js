@@ -1,6 +1,6 @@
 const API_BASE_URL = typeof getApiBaseUrl === "function"
   ? getApiBaseUrl()
-  : "https://retail-scraper-backend.onrender.com/api";
+  : "https://retail-scraper-backend-ecxl.onrender.com/api";
 
 document.addEventListener('DOMContentLoaded', async () => {
     const targetUrlInput = document.getElementById('targetUrl');
