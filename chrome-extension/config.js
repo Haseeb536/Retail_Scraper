@@ -2,8 +2,8 @@
 // Set USE_LOCAL_BACKEND to true when running backend from GitHub repo locally
 const EXTENSION_CONFIG = {
   REMOTE_API_URL: "https://retail-scraper-backend.onrender.com/api",
-  LOCAL_API_URL: "http://localhost:3000/api",
-  USE_LOCAL_BACKEND: false,
+  LOCAL_API_URL: "http://localhost:3001/api",
+  USE_LOCAL_BACKEND: true,
   ENABLE_LOCAL_AUTH_FALLBACK: true,
 };
 

@@ -371,7 +371,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     if (!tab.url.includes("realtor.com")) {
-      showToast("Navigate to a realtor.com agent search page first.", false);
+      showToast("Navigate to a realtor.com page first.", false);
       return;
     }
 

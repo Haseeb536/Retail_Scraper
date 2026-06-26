@@ -4,7 +4,7 @@
   "author": "Muhammad Haseeb Ramzan <https://github.com/Haseeb536>",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev --turbopack -p 3001",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

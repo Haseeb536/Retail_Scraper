@@ -1,36 +1,103 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Retail Scraper Backend
 
-## Getting Started
+Next.js 15 API server for authentication, user management, and scraping session logs.
 
-First, run the development server:
+## Quick Start (Windows / Mac / Linux)
+
+### 1. Install dependencies
+
+```bash
+cd backend
+npm install
+```
+
+### 2. Environment file
+
+Copy the example env file (already done if you cloned this repo):
+
+```bash
+copy .env.example .env
+```
+
+Default `.env` uses **SQLite** — no PostgreSQL installation required.
+
+### 3. Create database and seed admin user
+
+```bash
+npx prisma db push
+npm run prisma:seed
+```
+
+### 4. Start the server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Server runs at: **http://localhost:3001**
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| URL | Purpose |
+|-----|---------|
+| http://localhost:3001 | API home |
+| http://localhost:3001/admin/login | Admin panel |
+| http://localhost:3001/api/auth/login | Extension login API |
+| http://localhost:3001/api/auth/register | Extension register API |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 5. Default admin credentials
 
-## Learn More
+| Field | Value |
+|-------|-------|
+| Email | `admin@retailscraper.com` |
+| Password | `admin123` |
 
-To learn more about Next.js, take a look at the following resources:
+### 6. Connect the Chrome extension
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+In `chrome-extension/config.js` set:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```javascript
+USE_LOCAL_BACKEND: true,
+```
 
-## Deploy on Vercel
+Reload the extension in `chrome://extensions/`, then log in through the popup.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/auth/register` | Register new user (pending approval) |
+| POST | `/api/auth/login` | Login → returns JWT token |
+| POST | `/api/auth/verify` | Verify JWT token |
+| POST | `/api/scraping/log` | Log scraping session |
+| POST | `/api/admin/login` | Admin login |
+| GET | `/api/admin/users` | List users (admin) |
+| POST | `/api/admin/users/[id]/approve` | Approve user |
+| POST | `/api/admin/users/[id]/revoke` | Revoke user |
+
+---
+
+## Production (PostgreSQL)
+
+For production deployment (Render, Railway, etc.):
+
+1. Change `prisma/schema.prisma` provider back to `postgresql`
+2. Set `DATABASE_URL` to your PostgreSQL connection string
+3. Run `npx prisma migrate deploy`
+4. Run `npm run prisma:seed`
+5. Set a strong `JWT_SECRET` in environment variables
+
+---
+
+## Troubleshooting
+
+| Issue | Fix |
+|-------|-----|
+| `Internal server error` on login | Run `npx prisma db push` and `npm run prisma:seed` |
+| Port 3000 in use | Stop other apps or run `npx next dev -p 3001` |
+| Prisma client error | Run `npx prisma generate` |
+| Extension can't connect | Set `USE_LOCAL_BACKEND: true` in extension config |
+
+---
+
+Based on [1Khizar/Retail_Scraper](https://github.com/1Khizar/Retail_Scraper) — maintained by [Haseeb536](https://github.com/Haseeb536).
